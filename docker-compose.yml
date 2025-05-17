@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:6-alpine
+    command: redis-server --save 60 1 --loglevel warning --ignore-warnings ARM64-COW-BUG
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 2
+    restart: unless-stopped
+
+  db:
+    image: postgres:13-alpine
+    env_file: .env
+    environment:
+      - LC_ALL=en_US.UTF-8
+      - LANG=en_US.UTF-8
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 2
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - ./backend/coverage:/app/coverage
+    ports:
+      - "8000:8000"
+    networks:
+      - app_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: ["sh", "/app/entrypoint.sh"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      - VITE_API_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    networks:
+      - app_network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      - TESTING=true
+    volumes:
+      - ./backend:/app
+      - ./backend/coverage:/app/coverage
+    networks:
+      - app_network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "pytest src/medbook/tests/ --cov=src --cov-report=xml"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+
+networks:
+  app_network:
+    driver: bridge
