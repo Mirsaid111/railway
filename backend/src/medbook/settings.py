@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 from celery.schedules import crontab
 import os
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -125,10 +126,15 @@ DATABASES = {
         'NAME': os.getenv('POSTGRES_DB', 'medbook'),
         'USER': os.getenv('POSTGRES_USER', 'medbook_user'),
         'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'password'),
-        'HOST': os.getenv('POSTGRES_HOST', 'db'),  # Имя сервиса в Docker Compose
+        'HOST': os.getenv('POSTGRES_HOST', 'db'),  # Name of the service in Docker Compose
         'PORT': os.getenv('POSTGRES_PORT', '5432'),
     }
 }
+
+# Override default configuration with DATABASE_URL if provided
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES['default'] = dj_database_url.config(default=DATABASE_URL)
 
 
 # Password validation
@@ -187,5 +193,5 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1','*']
 SITE_ID = 1
